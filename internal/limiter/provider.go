@@ -18,31 +18,60 @@ type Settings struct {
 	Burst             int
 }
 
-type Provider struct {
+type FlightProvider struct {
 	next    domain.Provider
 	limiter *rate.Limiter
 }
 
-func NewProvider(next domain.Provider) *Provider {
-	return NewProviderWithSettings(next, DefaultSettings())
+type HotelProvider struct {
+	next    domain.HotelProvider
+	limiter *rate.Limiter
 }
 
-func NewProviderWithSettings(next domain.Provider, cfg Settings) *Provider {
+func NewFlightProvider(next domain.Provider) *FlightProvider {
+	return NewFlightProviderWithSettings(next, DefaultSettings())
+}
+
+func NewFlightProviderWithSettings(next domain.Provider, cfg Settings) *FlightProvider {
 	cfg = cfg.withDefaults()
-	return &Provider{
+	return &FlightProvider{
 		next:    next,
 		limiter: rate.NewLimiter(rate.Limit(cfg.RequestsPerSecond), cfg.Burst),
 	}
 }
 
-func NewProviders(providers []domain.Provider) []domain.Provider {
-	return NewProvidersWithSettings(providers, DefaultSettings())
+func NewHotelProvider(next domain.HotelProvider) *HotelProvider {
+	return NewHotelProviderWithSettings(next, DefaultSettings())
 }
 
-func NewProvidersWithSettings(providers []domain.Provider, cfg Settings) []domain.Provider {
+func NewHotelProviderWithSettings(next domain.HotelProvider, cfg Settings) *HotelProvider {
+	cfg = cfg.withDefaults()
+	return &HotelProvider{
+		next:    next,
+		limiter: rate.NewLimiter(rate.Limit(cfg.RequestsPerSecond), cfg.Burst),
+	}
+}
+
+func NewFlightProviders(providers []domain.Provider) []domain.Provider {
+	return NewFlightProvidersWithSettings(providers, DefaultSettings())
+}
+
+func NewFlightProvidersWithSettings(providers []domain.Provider, cfg Settings) []domain.Provider {
 	wrapped := make([]domain.Provider, 0, len(providers))
 	for _, provider := range providers {
-		wrapped = append(wrapped, NewProviderWithSettings(provider, cfg))
+		wrapped = append(wrapped, NewFlightProviderWithSettings(provider, cfg))
+	}
+	return wrapped
+}
+
+func NewHotelProviders(providers []domain.HotelProvider) []domain.HotelProvider {
+	return NewHotelProvidersWithSettings(providers, DefaultSettings())
+}
+
+func NewHotelProvidersWithSettings(providers []domain.HotelProvider, cfg Settings) []domain.HotelProvider {
+	wrapped := make([]domain.HotelProvider, 0, len(providers))
+	for _, provider := range providers {
+		wrapped = append(wrapped, NewHotelProviderWithSettings(provider, cfg))
 	}
 	return wrapped
 }
@@ -65,11 +94,22 @@ func (s Settings) withDefaults() Settings {
 	return s
 }
 
-func (p *Provider) Name() string {
+func (p *FlightProvider) Name() string {
 	return p.next.Name()
 }
 
-func (p *Provider) Search(ctx context.Context, req domain.SearchRequest) (*domain.ProviderSearchResponse, error) {
+func (p *FlightProvider) Search(ctx context.Context, req domain.SearchRequest) (*domain.ProviderSearchResponse, error) {
+	if !p.limiter.Allow() {
+		return nil, fmt.Errorf("provider %q rate limited", p.Name())
+	}
+	return p.next.Search(ctx, req)
+}
+
+func (p *HotelProvider) Name() string {
+	return p.next.Name()
+}
+
+func (p *HotelProvider) Search(ctx context.Context, req domain.HotelSearchRequest) (*domain.HotelProviderSearchResponse, error) {
 	if !p.limiter.Allow() {
 		return nil, fmt.Errorf("provider %q rate limited", p.Name())
 	}

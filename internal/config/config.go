@@ -16,6 +16,9 @@ const (
 	defaultBreakerHalfOpenCalls   = 1
 	defaultProviderRateLimitRPS   = 10
 	defaultProviderRateLimitBurst = 10
+	defaultRedisAddr              = "redis:6379"
+	defaultRedisDB                = 0
+	defaultCacheTTLSeconds        = 45
 )
 
 type Config struct {
@@ -27,6 +30,9 @@ type Config struct {
 	BreakerHalfOpenCalls   int
 	ProviderRateLimitRPS   int
 	ProviderRateLimitBurst int
+	RedisAddr              string
+	RedisDB                int
+	CacheTTLSeconds        int
 }
 
 func Load() *Config {
@@ -39,6 +45,9 @@ func Load() *Config {
 		BreakerHalfOpenCalls:   getEnvInt("BREAKER_HALF_OPEN_CALLS", defaultBreakerHalfOpenCalls),
 		ProviderRateLimitRPS:   getEnvInt("PROVIDER_RATE_LIMIT_RPS", defaultProviderRateLimitRPS),
 		ProviderRateLimitBurst: getEnvInt("PROVIDER_RATE_LIMIT_BURST", defaultProviderRateLimitBurst),
+		RedisAddr:              getEnv("REDIS_ADDR", defaultRedisAddr),
+		RedisDB:                getEnvInt("REDIS_DB", defaultRedisDB),
+		CacheTTLSeconds:        getEnvInt("CACHE_TTL_SECONDS", defaultCacheTTLSeconds),
 	}
 	return cfg
 }

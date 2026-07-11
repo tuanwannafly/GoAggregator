@@ -23,7 +23,7 @@ func TestAggregatorSkipsHTTPProviderAfterCircuitOpens(t *testing.T) {
 	t.Cleanup(providerC.Close)
 
 	httpProviders := provider.NewHTTPProviders([]string{providerC.URL}, 100*time.Millisecond)
-	protectedProviders := NewProvidersWithSettings(httpProviders, Settings{
+	protectedProviders := NewFlightProvidersWithSettings(httpProviders, Settings{
 		OpenCooldown:     time.Minute,
 		HalfOpenRequests: 1,
 	})
@@ -47,9 +47,9 @@ func TestAggregatorSkipsHTTPProviderAfterCircuitOpens(t *testing.T) {
 		t.Fatalf("provider HTTP hits after 5 calls = %d, want 5", hits)
 	}
 
-	breakerProvider, ok := protectedProviders[0].(*Provider)
+	breakerProvider, ok := protectedProviders[0].(*FlightProvider)
 	if !ok {
-		t.Fatalf("protected provider type = %T, want *breaker.Provider", protectedProviders[0])
+		t.Fatalf("protected provider type = %T, want *breaker.FlightProvider", protectedProviders[0])
 	}
 	if breakerProvider.State() != gobreaker.StateOpen {
 		t.Fatalf("breaker state = %s, want open", breakerProvider.State())

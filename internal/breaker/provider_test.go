@@ -32,12 +32,12 @@ func (p *scriptedProvider) Search(ctx context.Context, req domain.SearchRequest)
 	return &domain.ProviderSearchResponse{Provider: p.name}, nil
 }
 
-func TestProviderCircuitBreakerTripsAtSixtyPercentFailuresOverFiveRequests(t *testing.T) {
+func TestFlightProviderCircuitBreakerTripsAtSixtyPercentFailuresOverFiveRequests(t *testing.T) {
 	base := &scriptedProvider{
 		name:   "provider-flaky",
 		errors: []bool{true, true, false, false, true, false},
 	}
-	protected := NewProvider(base)
+	protected := NewFlightProvider(base)
 
 	for i := 0; i < 5; i++ {
 		_, _ = protected.Search(context.Background(), domain.SearchRequest{})
@@ -56,12 +56,12 @@ func TestProviderCircuitBreakerTripsAtSixtyPercentFailuresOverFiveRequests(t *te
 	}
 }
 
-func TestProviderCircuitBreakerStaysClosedBelowSixtyPercentFailures(t *testing.T) {
+func TestFlightProviderCircuitBreakerStaysClosedBelowSixtyPercentFailures(t *testing.T) {
 	base := &scriptedProvider{
 		name:   "provider-mostly-ok",
 		errors: []bool{true, true, false, false, false, false},
 	}
-	protected := NewProvider(base)
+	protected := NewFlightProvider(base)
 
 	for i := 0; i < 5; i++ {
 		_, _ = protected.Search(context.Background(), domain.SearchRequest{})
@@ -80,12 +80,12 @@ func TestProviderCircuitBreakerStaysClosedBelowSixtyPercentFailures(t *testing.T
 	}
 }
 
-func TestProviderCircuitBreakerRetriesAfterCooldownInHalfOpen(t *testing.T) {
+func TestFlightProviderCircuitBreakerRetriesAfterCooldownInHalfOpen(t *testing.T) {
 	base := &scriptedProvider{
 		name:   "provider-recovering",
 		errors: []bool{true, true, false, false, true, false, false},
 	}
-	protected := NewProviderWithSettings(base, Settings{
+	protected := NewFlightProviderWithSettings(base, Settings{
 		OpenCooldown:     20 * time.Millisecond,
 		HalfOpenRequests: 1,
 	})
@@ -110,12 +110,12 @@ func TestProviderCircuitBreakerRetriesAfterCooldownInHalfOpen(t *testing.T) {
 	}
 }
 
-func TestProviderCircuitBreakerLimitsHalfOpenRequests(t *testing.T) {
+func TestFlightProviderCircuitBreakerLimitsHalfOpenRequests(t *testing.T) {
 	base := &scriptedProvider{
 		name:   "provider-limited-half-open",
 		errors: []bool{true, true, false, false, true, false},
 	}
-	protected := NewProviderWithSettings(base, Settings{
+	protected := NewFlightProviderWithSettings(base, Settings{
 		OpenCooldown:     20 * time.Millisecond,
 		HalfOpenRequests: 1,
 	})

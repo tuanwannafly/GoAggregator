@@ -37,7 +37,7 @@ func (p *countingProvider) Search(ctx context.Context, req domain.SearchRequest)
 
 func TestProviderRateLimiterSkipsRequestsOverQuota(t *testing.T) {
 	base := &countingProvider{name: "provider-limited"}
-	limited := NewProviderWithSettings(base, Settings{RequestsPerSecond: 1, Burst: 1})
+	limited := NewFlightProviderWithSettings(base, Settings{RequestsPerSecond: 1, Burst: 1})
 
 	_, err := limited.Search(context.Background(), domain.SearchRequest{})
 	if err != nil {
@@ -56,7 +56,7 @@ func TestProviderRateLimiterSkipsRequestsOverQuota(t *testing.T) {
 func TestRateLimitedProviderDoesNotFailWholeFlightSearch(t *testing.T) {
 	limitedBase := &countingProvider{name: "provider-limited"}
 	healthyBase := &countingProvider{name: "provider-healthy"}
-	limited := NewProviderWithSettings(limitedBase, Settings{RequestsPerSecond: 1, Burst: 1})
+	limited := NewFlightProviderWithSettings(limitedBase, Settings{RequestsPerSecond: 1, Burst: 1})
 
 	_, err := limited.Search(context.Background(), domain.SearchRequest{})
 	if err != nil {
