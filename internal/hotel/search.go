@@ -10,6 +10,7 @@ import (
 	"github.com/yourusername/goaggregator/internal/cache"
 	"github.com/yourusername/goaggregator/internal/domain"
 	"github.com/yourusername/goaggregator/internal/requestid"
+	"github.com/yourusername/goaggregator/internal/telemetry"
 )
 
 type SearchService struct {
@@ -61,6 +62,14 @@ func (s *SearchService) WithCache(cache cache.Cache, ttl time.Duration) *SearchS
 
 func (s *SearchService) Search(ctx context.Context, req domain.HotelSearchRequest) SearchResponse {
 	ctx = requestid.NewContext(ctx)
+	ctx, span := telemetry.StartSpan(ctx, "hotel.search",
+		telemetry.WithAttributes(
+			telemetry.AttributeString("city", req.City),
+			telemetry.AttributeString("checkin", req.CheckIn),
+			telemetry.AttributeString("checkout", req.CheckOut),
+		),
+	)
+	defer span.End()
 	started := time.Now()
 	cacheKey := hotelCacheKey(req)
 	if s.cache != nil && s.cacheTTL > 0 {
@@ -71,6 +80,7 @@ func (s *SearchService) Search(ctx context.Context, req domain.HotelSearchReques
 			cached.Meta.ProvidersFailed = []ProviderError{}
 			cached.Meta.CacheHit = true
 			cached.Meta.DurationMs = time.Since(started).Milliseconds()
+			telemetry.AddSpanAttributes(ctx, telemetry.AttributeBool("cache.hit", true))
 			return cached
 		} else if !errors.Is(err, cache.ErrMiss) {
 			// Cache is best-effort; provider search remains the source of truth.
@@ -143,6 +153,14 @@ func (s *SearchService) Search(ctx context.Context, req domain.HotelSearchReques
 
 	response.Results = mergeSortHotelResults(response.Results)
 	response.Meta.DurationMs = time.Since(started).Milliseconds()
+
+	telemetry.AddSpanAttributes(ctx,
+		telemetry.AttributeInt("providers.called", response.Meta.ProvidersCalled),
+		telemetry.AttributeInt("providers.succeeded", response.Meta.ProvidersSucceeded),
+		telemetry.AttributeInt("providers.failed", len(response.Meta.ProvidersFailed)),
+		telemetry.AttributeInt("results.count", len(response.Results)),
+		telemetry.AttributeInt64("duration.ms", response.Meta.DurationMs),
+	)
 
 	if s.cache != nil && s.cacheTTL > 0 && !response.Meta.CacheHit {
 		_ = s.cache.Set(ctx, cacheKey, response, s.cacheTTL)

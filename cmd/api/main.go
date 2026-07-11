@@ -18,6 +18,7 @@ import (
 	"github.com/yourusername/goaggregator/internal/hotel"
 	"github.com/yourusername/goaggregator/internal/limiter"
 	"github.com/yourusername/goaggregator/internal/provider"
+	"github.com/yourusername/goaggregator/internal/telemetry"
 )
 
 func main() {
@@ -25,6 +26,20 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.SlogLevel()}))
 	slog.SetDefault(logger)
+
+	// Initialize OpenTelemetry tracer
+	tp, err := telemetry.InitTracer("goaggregator-api")
+	if err != nil {
+		slog.Error("failed to initialize tracer", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(ctx, tp); err != nil {
+			slog.Error("failed to shutdown tracer", "error", err)
+		}
+	}()
 
 	flightProviders := provider.NewHTTPProviders(cfg.ProviderHosts, time.Duration(cfg.ProviderTimeoutMs)*time.Millisecond)
 	flightProviders = breaker.NewFlightProvidersWithSettings(flightProviders, breaker.Settings{
@@ -103,6 +118,9 @@ func main() {
 func newRouter(flightSearch *flight.SearchService, hotelSearch *hotel.SearchService, flightProviders []domain.Provider, hotelProviders []domain.HotelProvider) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	
+	// Add OpenTelemetry HTTP middleware
+	r.Use(telemetry.GinMiddleware("goaggregator-api"))
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
