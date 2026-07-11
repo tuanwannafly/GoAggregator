@@ -2,7 +2,11 @@ module github.com/yourusername/goaggregator
 
 go 1.26.5
 
-require github.com/gin-gonic/gin v1.12.0
+require (
+	github.com/gin-gonic/gin v1.12.0
+	github.com/sony/gobreaker v1.0.0
+	golang.org/x/time v0.15.0
+)
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
