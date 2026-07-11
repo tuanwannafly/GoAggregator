@@ -1,0 +1,89 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        APP: api
+    environment:
+      PORT: "8081"
+      LOG_LEVEL: info
+      PROVIDER_TIMEOUT_MS: "3000"
+      PROVIDER_HOSTS: http://provider-fast:8080,http://provider-slow:8080,http://provider-flaky:8080,http://provider-timeout:8080,http://provider-down:8080
+    ports:
+      - "8081:8081"
+    depends_on:
+      provider-fast:
+        condition: service_started
+      provider-slow:
+        condition: service_started
+      provider-flaky:
+        condition: service_started
+      provider-timeout:
+        condition: service_started
+      provider-down:
+        condition: service_started
+
+  provider-fast:
+    build:
+      context: .
+      args:
+        APP: mockprovider
+    environment:
+      PROVIDER_NAME: provider-fast
+      BASE_PRICE_VND: "1200000"
+      LATENCY_MS: "50"
+      ERROR_RATE: "0"
+    ports:
+      - "18080:8080"
+
+  provider-slow:
+    build:
+      context: .
+      args:
+        APP: mockprovider
+    environment:
+      PROVIDER_NAME: provider-slow
+      BASE_PRICE_VND: "1350000"
+      LATENCY_MS: "1200"
+      ERROR_RATE: "0"
+    ports:
+      - "18081:8080"
+
+  provider-flaky:
+    build:
+      context: .
+      args:
+        APP: mockprovider
+    environment:
+      PROVIDER_NAME: provider-flaky
+      BASE_PRICE_VND: "1100000"
+      LATENCY_MS: "200"
+      ERROR_RATE: "0.35"
+    ports:
+      - "18082:8080"
+
+  provider-timeout:
+    build:
+      context: .
+      args:
+        APP: mockprovider
+    environment:
+      PROVIDER_NAME: provider-timeout
+      BASE_PRICE_VND: "1500000"
+      LATENCY_MS: "5000"
+      ERROR_RATE: "0"
+    ports:
+      - "18083:8080"
+
+  provider-down:
+    build:
+      context: .
+      args:
+        APP: mockprovider
+    environment:
+      PROVIDER_NAME: provider-down
+      BASE_PRICE_VND: "1700000"
+      LATENCY_MS: "100"
+      ERROR_RATE: "1"
+    ports:
+      - "18084:8080"
