@@ -1,4 +1,4 @@
-package flight
+package hotel
 
 import (
 	"context"
@@ -11,19 +11,19 @@ import (
 	"github.com/yourusername/goaggregator/internal/domain"
 )
 
-type fakeProvider struct {
+type fakeHotelProvider struct {
 	name    string
 	delay   time.Duration
 	err     error
-	results []domain.FlightResult
+	results []domain.HotelResult
 	called  int
 }
 
-func (p fakeProvider) Name() string {
+func (p *fakeHotelProvider) Name() string {
 	return p.name
 }
 
-func (p *fakeProvider) Search(ctx context.Context, req domain.SearchRequest) (*domain.ProviderSearchResponse, error) {
+func (p *fakeHotelProvider) Search(ctx context.Context, req domain.HotelSearchRequest) (*domain.HotelProviderSearchResponse, error) {
 	p.called++
 	select {
 	case <-time.After(p.delay):
@@ -34,29 +34,37 @@ func (p *fakeProvider) Search(ctx context.Context, req domain.SearchRequest) (*d
 		return nil, p.err
 	}
 	if p.results != nil {
-		return &domain.ProviderSearchResponse{
+		return &domain.HotelProviderSearchResponse{
 			Provider: p.name,
 			Results:  p.results,
 		}, nil
 	}
-	return &domain.ProviderSearchResponse{
+	return &domain.HotelProviderSearchResponse{
 		Provider: p.name,
-		Results:  []domain.FlightResult{{ID: p.name + "-1", From: req.From, To: req.To, Date: req.Date, Price: 1_000_000}},
+		Results: []domain.HotelResult{{
+			ID:            p.name + "-1",
+			City:          req.City,
+			CheckIn:       req.CheckIn,
+			CheckOut:      req.CheckOut,
+			Name:          "Test Hotel",
+			PricePerNight: 1_000_000,
+			Currency:      "VND",
+		}},
 	}, nil
 }
 
-func TestSearchFansOutWithPerProviderTimeout(t *testing.T) {
-	fast := &fakeProvider{name: "fast", delay: 10 * time.Millisecond}
-	slow := &fakeProvider{name: "slow", delay: 200 * time.Millisecond}
-	failing := &fakeProvider{name: "failing", delay: 5 * time.Millisecond, err: errors.New("boom")}
-	service := NewSearchService([]domain.Provider{
+func TestHotelSearchFansOutWithPerProviderTimeout(t *testing.T) {
+	fast := &fakeHotelProvider{name: "fast", delay: 10 * time.Millisecond}
+	slow := &fakeHotelProvider{name: "slow", delay: 200 * time.Millisecond}
+	failing := &fakeHotelProvider{name: "failing", delay: 5 * time.Millisecond, err: errors.New("boom")}
+	service := NewSearchService([]domain.HotelProvider{
 		fast,
 		slow,
 		failing,
 	}, 50*time.Millisecond)
 
 	started := time.Now()
-	resp := service.Search(context.Background(), domain.SearchRequest{From: "SGN", To: "HAN", Date: "2026-08-15"})
+	resp := service.Search(context.Background(), domain.HotelSearchRequest{City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17"})
 	elapsed := time.Since(started)
 
 	if elapsed >= 150*time.Millisecond {
@@ -76,25 +84,25 @@ func TestSearchFansOutWithPerProviderTimeout(t *testing.T) {
 	}
 }
 
-func TestSearchMergesDedupesAndSortsResultsByPrice(t *testing.T) {
-	service := NewSearchService([]domain.Provider{
-		&fakeProvider{
+func TestHotelSearchMergesDedupesAndSortsResultsByPrice(t *testing.T) {
+	service := NewSearchService([]domain.HotelProvider{
+		&fakeHotelProvider{
 			name: "provider-a",
-			results: []domain.FlightResult{
-				{ID: "expensive", From: "SGN", To: "HAN", Date: "2026-08-15", Price: 2_000_000, Currency: "VND", Airline: "A"},
-				{ID: "duplicate", From: "SGN", To: "HAN", Date: "2026-08-15", Price: 1_000_000, Currency: "VND", Airline: "B"},
+			results: []domain.HotelResult{
+				{ID: "expensive", City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17", PricePerNight: 2_000_000, Currency: "VND", Name: "A"},
+				{ID: "duplicate", City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17", PricePerNight: 1_000_000, Currency: "VND", Name: "B"},
 			},
 		},
-		&fakeProvider{
+		&fakeHotelProvider{
 			name: "provider-b",
-			results: []domain.FlightResult{
-				{ID: "cheap", From: "SGN", To: "HAN", Date: "2026-08-15", Price: 500_000, Currency: "VND", Airline: "C"},
-				{ID: "duplicate", From: "SGN", To: "HAN", Date: "2026-08-15", Price: 1_000_000, Currency: "VND", Airline: "B"},
+			results: []domain.HotelResult{
+				{ID: "cheap", City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17", PricePerNight: 500_000, Currency: "VND", Name: "C"},
+				{ID: "duplicate", City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17", PricePerNight: 1_000_000, Currency: "VND", Name: "B"},
 			},
 		},
 	}, 50*time.Millisecond)
 
-	resp := service.Search(context.Background(), domain.SearchRequest{From: "SGN", To: "HAN", Date: "2026-08-15"})
+	resp := service.Search(context.Background(), domain.HotelSearchRequest{City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17"})
 
 	if resp.Meta.ProvidersSucceeded != 2 {
 		t.Fatalf("providers succeeded = %d, want 2", resp.Meta.ProvidersSucceeded)
@@ -145,11 +153,11 @@ func (c *memoryCache) Set(ctx context.Context, key string, value any, ttl time.D
 	return nil
 }
 
-func TestSearchUsesCacheAsideOnMissThenHit(t *testing.T) {
-	provider := &fakeProvider{name: "provider-cache"}
+func TestHotelSearchUsesCacheAsideOnMissThenHit(t *testing.T) {
+	provider := &fakeHotelProvider{name: "provider-cache"}
 	cacheStore := newMemoryCache()
-	service := NewSearchService([]domain.Provider{provider}, 50*time.Millisecond).WithCache(cacheStore, time.Minute)
-	req := domain.SearchRequest{From: "sgn", To: "han", Date: "2026-08-15"}
+	service := NewSearchService([]domain.HotelProvider{provider}, 50*time.Millisecond).WithCache(cacheStore, time.Minute)
+	req := domain.HotelSearchRequest{City: "DAD", CheckIn: "2026-08-15", CheckOut: "2026-08-17"}
 
 	first := service.Search(context.Background(), req)
 	if first.Meta.CacheHit {

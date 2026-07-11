@@ -9,9 +9,13 @@ services:
       LOG_LEVEL: info
       PROVIDER_TIMEOUT_MS: "3000"
       PROVIDER_HOSTS: http://provider-fast:8080,http://provider-slow:8080,http://provider-flaky:8080,http://provider-timeout:8080,http://provider-down:8080
+      REDIS_ADDR: redis:6379
+      CACHE_TTL_SECONDS: "45"
     ports:
       - "8081:8081"
     depends_on:
+      redis:
+        condition: service_started
       provider-fast:
         condition: service_started
       provider-slow:
@@ -87,3 +91,8 @@ services:
       ERROR_RATE: "1"
     ports:
       - "18084:8080"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

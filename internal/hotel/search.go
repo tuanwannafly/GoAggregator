@@ -1,11 +1,10 @@
-package flight
+package hotel
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/yourusername/goaggregator/internal/cache"
@@ -13,15 +12,15 @@ import (
 )
 
 type SearchService struct {
-	providers []domain.Provider
+	providers []domain.HotelProvider
 	timeout   time.Duration
 	cache     cache.Cache
 	cacheTTL  time.Duration
 }
 
 type SearchResponse struct {
-	Results []domain.FlightResult `json:"results"`
-	Meta    SearchMeta            `json:"meta"`
+	Results []domain.HotelResult `json:"results"`
+	Meta    SearchMeta           `json:"meta"`
 }
 
 type SearchMeta struct {
@@ -39,11 +38,11 @@ type ProviderError struct {
 
 type providerResult struct {
 	provider string
-	response *domain.ProviderSearchResponse
+	response *domain.HotelProviderSearchResponse
 	err      error
 }
 
-func NewSearchService(providers []domain.Provider, timeout time.Duration) *SearchService {
+func NewSearchService(providers []domain.HotelProvider, timeout time.Duration) *SearchService {
 	return &SearchService{
 		providers: providers,
 		timeout:   timeout,
@@ -59,9 +58,9 @@ func (s *SearchService) WithCache(cache cache.Cache, ttl time.Duration) *SearchS
 	return s
 }
 
-func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) SearchResponse {
+func (s *SearchService) Search(ctx context.Context, req domain.HotelSearchRequest) SearchResponse {
 	started := time.Now()
-	cacheKey := flightCacheKey(req)
+	cacheKey := hotelCacheKey(req)
 	if s.cache != nil && s.cacheTTL > 0 {
 		var cached SearchResponse
 		if err := s.cache.Get(ctx, cacheKey, &cached); err == nil {
@@ -95,7 +94,7 @@ func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) Se
 	}
 
 	response := SearchResponse{
-		Results: make([]domain.FlightResult, 0),
+		Results: make([]domain.HotelResult, 0),
 		Meta: SearchMeta{
 			ProvidersCalled: len(s.providers),
 			ProvidersFailed: make([]ProviderError, 0),
@@ -115,44 +114,46 @@ func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) Se
 			if result.response == nil {
 				response.Meta.ProvidersFailed = append(response.Meta.ProvidersFailed, ProviderError{
 					Provider: result.provider,
-					Error:    "empty provider response",
+					Error:    "empty response",
 				})
 				continue
 			}
-			response.Results = append(response.Results, result.response.Results...)
-			for i := len(response.Results) - len(result.response.Results); i < len(response.Results); i++ {
-				if response.Results[i].Provider == "" {
-					response.Results[i].Provider = result.response.Provider
-				}
+			response.Meta.ProvidersSucceeded++
+			for _, r := range result.response.Results {
+				response.Results = append(response.Results, domain.HotelResult{
+					Provider:      result.provider,
+					ID:            r.ID,
+					City:          r.City,
+					CheckIn:       r.CheckIn,
+					CheckOut:      r.CheckOut,
+					Name:          r.Name,
+					PricePerNight: r.PricePerNight,
+					Currency:      r.Currency,
+				})
 			}
 		case <-ctx.Done():
 			response.Meta.ProvidersFailed = append(response.Meta.ProvidersFailed, ProviderError{
-				Provider: "request",
-				Error:    fmt.Sprintf("request cancelled: %v", ctx.Err()),
+				Provider: "context",
+				Error:    ctx.Err().Error(),
 			})
-			response.Meta.DurationMs = time.Since(started).Milliseconds()
-			return response
 		}
 	}
 
-	response.Results = mergeSortResults(response.Results)
-	response.Meta.ProvidersSucceeded = response.Meta.ProvidersCalled - len(response.Meta.ProvidersFailed)
+	response.Results = mergeSortHotelResults(response.Results)
 	response.Meta.DurationMs = time.Since(started).Milliseconds()
-	if s.cache != nil && s.cacheTTL > 0 {
+
+	if s.cache != nil && s.cacheTTL > 0 && !response.Meta.CacheHit {
 		_ = s.cache.Set(ctx, cacheKey, response, s.cacheTTL)
 	}
+
 	return response
 }
 
-func flightCacheKey(req domain.SearchRequest) string {
-	return fmt.Sprintf("flight:%s:%s:%s", strings.ToUpper(req.From), strings.ToUpper(req.To), req.Date)
-}
-
-func mergeSortResults(results []domain.FlightResult) []domain.FlightResult {
-	deduped := make([]domain.FlightResult, 0, len(results))
+func mergeSortHotelResults(results []domain.HotelResult) []domain.HotelResult {
+	deduped := make([]domain.HotelResult, 0, len(results))
 	seen := make(map[string]struct{}, len(results))
 	for _, result := range results {
-		key := resultKey(result)
+		key := hotelResultKey(result)
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -161,14 +162,18 @@ func mergeSortResults(results []domain.FlightResult) []domain.FlightResult {
 	}
 
 	sort.SliceStable(deduped, func(i, j int) bool {
-		if deduped[i].Price == deduped[j].Price {
+		if deduped[i].PricePerNight == deduped[j].PricePerNight {
 			return deduped[i].ID < deduped[j].ID
 		}
-		return deduped[i].Price < deduped[j].Price
+		return deduped[i].PricePerNight < deduped[j].PricePerNight
 	})
 	return deduped
 }
 
-func resultKey(result domain.FlightResult) string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%s", result.ID, result.From, result.To, result.Date, result.Airline, result.Price, result.Currency)
+func hotelResultKey(result domain.HotelResult) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s|%d|%s", result.ID, result.City, result.CheckIn, result.CheckOut, result.Name, result.PricePerNight, result.Currency)
+}
+
+func hotelCacheKey(req domain.HotelSearchRequest) string {
+	return "hotel:" + req.City + ":" + req.CheckIn + ":" + req.CheckOut
 }
