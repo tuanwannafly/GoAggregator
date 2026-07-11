@@ -56,7 +56,7 @@ func main() {
 	hotelSearch := hotel.NewSearchService(hotelProviders, time.Duration(cfg.ProviderTimeoutMs)*time.Millisecond).
 		WithCache(hotelCache, time.Duration(cfg.CacheTTLSeconds)*time.Second)
 
-	r := newRouter(flightSearch, hotelSearch)
+	r := newRouter(flightSearch, hotelSearch, flightProviders, hotelProviders)
 
 	slog.Info("starting server",
 		"port", cfg.Port,
@@ -100,7 +100,7 @@ func main() {
 	slog.Info("server stopped")
 }
 
-func newRouter(flightSearch *flight.SearchService, hotelSearch *hotel.SearchService) *gin.Engine {
+func newRouter(flightSearch *flight.SearchService, hotelSearch *hotel.SearchService, flightProviders []domain.Provider, hotelProviders []domain.HotelProvider) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
@@ -113,7 +113,45 @@ func newRouter(flightSearch *flight.SearchService, hotelSearch *hotel.SearchServ
 
 	r.GET("/search/flights", searchFlightsHandler(flightSearch))
 	r.GET("/search/hotels", searchHotelsHandler(hotelSearch))
+
+	r.GET("/providers/status", providersStatusHandler(flightProviders, hotelProviders))
 	return r
+}
+
+func providersStatusHandler(flightProviders []domain.Provider, hotelProviders []domain.HotelProvider) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		type ProviderStatus struct {
+			Name  string `json:"name"`
+			Type  string `json:"type"` // "flight" or "hotel"
+			State string `json:"state"`
+		}
+
+		var statuses []ProviderStatus
+
+		for _, p := range flightProviders {
+			if bp, ok := p.(*breaker.FlightProvider); ok {
+				statuses = append(statuses, ProviderStatus{
+					Name:  bp.Name(),
+					Type:  "flight",
+					State: bp.State().String(),
+				})
+			}
+		}
+
+		for _, p := range hotelProviders {
+			if bp, ok := p.(*breaker.HotelProvider); ok {
+				statuses = append(statuses, ProviderStatus{
+					Name:  bp.Name(),
+					Type:  "hotel",
+					State: bp.State().String(),
+				})
+			}
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"providers": statuses,
+		})
+	}
 }
 
 func searchFlightsHandler(flightSearch *flight.SearchService) gin.HandlerFunc {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/yourusername/goaggregator/internal/cache"
 	"github.com/yourusername/goaggregator/internal/domain"
+	"github.com/yourusername/goaggregator/internal/requestid"
 )
 
 type SearchService struct {
@@ -59,6 +60,7 @@ func (s *SearchService) WithCache(cache cache.Cache, ttl time.Duration) *SearchS
 }
 
 func (s *SearchService) Search(ctx context.Context, req domain.HotelSearchRequest) SearchResponse {
+	ctx = requestid.NewContext(ctx)
 	started := time.Now()
 	cacheKey := hotelCacheKey(req)
 	if s.cache != nil && s.cacheTTL > 0 {

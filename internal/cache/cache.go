@@ -61,3 +61,43 @@ func (NoopCache) Get(ctx context.Context, key string, dest any) error {
 func (NoopCache) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
 	return nil
 }
+
+// MemoryCache is an in-memory cache implementation for testing
+type MemoryCache struct {
+	data map[string]cacheEntry
+}
+
+type cacheEntry struct {
+	value     []byte
+	expiresAt time.Time
+}
+
+func NewMemoryCache() *MemoryCache {
+	return &MemoryCache{
+		data: make(map[string]cacheEntry),
+	}
+}
+
+func (c *MemoryCache) Get(ctx context.Context, key string, dest any) error {
+	entry, ok := c.data[key]
+	if !ok {
+		return ErrMiss
+	}
+	if time.Now().After(entry.expiresAt) {
+		delete(c.data, key)
+		return ErrMiss
+	}
+	return json.Unmarshal(entry.value, dest)
+}
+
+func (c *MemoryCache) Set(ctx context.Context, key string, value any, ttl time.Duration) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	c.data[key] = cacheEntry{
+		value:     raw,
+		expiresAt: time.Now().Add(ttl),
+	}
+	return nil
+}
