@@ -11,6 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yourusername/goaggregator/internal/config"
+	"github.com/yourusername/goaggregator/internal/domain"
+	"github.com/yourusername/goaggregator/internal/flight"
+	"github.com/yourusername/goaggregator/internal/provider"
 )
 
 func main() {
@@ -18,6 +21,8 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.SlogLevel()}))
 	slog.SetDefault(logger)
+	providers := provider.NewHTTPProviders(cfg.ProviderHosts, time.Duration(cfg.ProviderTimeoutMs)*time.Millisecond)
+	flightSearch := flight.NewSearchService(providers, time.Duration(cfg.ProviderTimeoutMs)*time.Millisecond)
 
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -29,11 +34,26 @@ func main() {
 		})
 	})
 
+	r.GET("/search/flights", func(c *gin.Context) {
+		searchReq := domain.SearchRequest{
+			From: c.Query("from"),
+			To:   c.Query("to"),
+			Date: c.Query("date"),
+		}
+		if searchReq.From == "" || searchReq.To == "" || searchReq.Date == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "from, to, and date query params are required"})
+			return
+		}
+
+		response := flightSearch.Search(c.Request.Context(), searchReq)
+		c.JSON(http.StatusOK, response)
+	})
+
 	slog.Info("starting server",
 		"port", cfg.Port,
 		"log_level", cfg.LogLevel,
 		"provider_timeout_ms", cfg.ProviderTimeoutMs,
-		"providers", cfg.ProviderHosts,
+		"providers", len(providers),
 	)
 
 	srv := &http.Server{
