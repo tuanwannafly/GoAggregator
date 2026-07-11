@@ -66,7 +66,12 @@ func (p *apiTestHotelProvider) Search(ctx context.Context, req domain.HotelSearc
 func TestSearchFlightsHandlerReturnsResults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	provider := &apiTestProvider{}
-	router := newRouter(flight.NewSearchService([]domain.Provider{provider}, 100*time.Millisecond), hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond))
+	router := newRouter(
+		flight.NewSearchService([]domain.Provider{provider}, 100*time.Millisecond),
+		hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond),
+		[]domain.Provider{provider},
+		[]domain.HotelProvider{},
+	)
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/search/flights?from=SGN&to=HAN&date=2026-08-15", nil)
@@ -93,7 +98,12 @@ func TestSearchFlightsHandlerReturnsResults(t *testing.T) {
 
 func TestSearchFlightsHandlerValidatesRequiredQueryParams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := newRouter(flight.NewSearchService(nil, 100*time.Millisecond), hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond))
+	router := newRouter(
+		flight.NewSearchService(nil, 100*time.Millisecond),
+		hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond),
+		[]domain.Provider{},
+		[]domain.HotelProvider{},
+	)
 
 	tests := []string{
 		"/search/flights?to=HAN&date=2026-08-15",
@@ -114,7 +124,12 @@ func TestSearchFlightsHandlerValidatesRequiredQueryParams(t *testing.T) {
 func TestSearchHotelsHandlerReturnsResults(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	provider := &apiTestHotelProvider{}
-	router := newRouter(flight.NewSearchService(nil, 100*time.Millisecond), hotel.NewSearchService([]domain.HotelProvider{provider}, 100*time.Millisecond))
+	router := newRouter(
+		flight.NewSearchService(nil, 100*time.Millisecond),
+		hotel.NewSearchService([]domain.HotelProvider{provider}, 100*time.Millisecond),
+		[]domain.Provider{},
+		[]domain.HotelProvider{provider},
+	)
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/search/hotels?city=DAD&checkin=2026-08-15&checkout=2026-08-17", nil)
@@ -138,7 +153,12 @@ func TestSearchHotelsHandlerReturnsResults(t *testing.T) {
 
 func TestSearchHotelsHandlerValidatesRequiredQueryParams(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	router := newRouter(flight.NewSearchService(nil, 100*time.Millisecond), hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond))
+	router := newRouter(
+		flight.NewSearchService(nil, 100*time.Millisecond),
+		hotel.NewSearchService([]domain.HotelProvider{}, 100*time.Millisecond),
+		[]domain.Provider{},
+		[]domain.HotelProvider{},
+	)
 
 	tests := []string{
 		"/search/hotels?checkin=2026-08-15&checkout=2026-08-17",

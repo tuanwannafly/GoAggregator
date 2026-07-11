@@ -35,7 +35,7 @@ func NewHTTPProviders(hosts []string, timeout time.Duration) []domain.Provider {
 		if host == "" {
 			continue
 		}
-		providers = append(providers, NewHTTPProvider(providerName(host), host, timeout))
+		providers = append(providers, NewHTTPProvider(host, host, timeout))
 	}
 	return providers
 }

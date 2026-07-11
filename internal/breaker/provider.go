@@ -3,10 +3,12 @@ package breaker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/sony/gobreaker"
 	"github.com/yourusername/goaggregator/internal/domain"
+	"github.com/yourusername/goaggregator/internal/requestid"
 )
 
 const (
@@ -138,9 +140,26 @@ func (p *FlightProvider) Name() string {
 }
 
 func (p *FlightProvider) Search(ctx context.Context, req domain.SearchRequest) (*domain.ProviderSearchResponse, error) {
+	started := time.Now()
+	cbState := p.breaker.State()
+
 	result, err := p.breaker.Execute(func() (interface{}, error) {
 		return p.next.Search(ctx, req)
 	})
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	slog.Info("provider call",
+		"request_id", requestid.FromContext(ctx),
+		"provider", p.Name(),
+		"duration_ms", time.Since(started).Milliseconds(),
+		"status", status,
+		"circuit_state", cbState.String(),
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("provider %q circuit breaker: %w", p.Name(), err)
 	}
@@ -161,9 +180,26 @@ func (p *HotelProvider) Name() string {
 }
 
 func (p *HotelProvider) Search(ctx context.Context, req domain.HotelSearchRequest) (*domain.HotelProviderSearchResponse, error) {
+	started := time.Now()
+	cbState := p.breaker.State()
+
 	result, err := p.breaker.Execute(func() (interface{}, error) {
 		return p.next.Search(ctx, req)
 	})
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	slog.Info("provider call",
+		"request_id", requestid.FromContext(ctx),
+		"provider", p.Name(),
+		"duration_ms", time.Since(started).Milliseconds(),
+		"status", status,
+		"circuit_state", cbState.String(),
+	)
+
 	if err != nil {
 		return nil, fmt.Errorf("provider %q circuit breaker: %w", p.Name(), err)
 	}
