@@ -11,6 +11,7 @@ import (
 	"github.com/yourusername/goaggregator/internal/cache"
 	"github.com/yourusername/goaggregator/internal/domain"
 	"github.com/yourusername/goaggregator/internal/requestid"
+	"github.com/yourusername/goaggregator/internal/telemetry"
 )
 
 type SearchService struct {
@@ -79,6 +80,17 @@ func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) Se
 		}
 	}
 
+	// Start span for the search operation
+	ctx, span := telemetry.StartSpan(ctx, "flight.search",
+		telemetry.WithAttributes(
+			telemetry.AttributeString("search.from", req.From),
+			telemetry.AttributeString("search.to", req.To),
+			telemetry.AttributeString("search.date", req.Date),
+			telemetry.AttributeInt("providers.count", len(s.providers)),
+		),
+	)
+	defer span.End()
+
 	resultsCh := make(chan providerResult, len(s.providers))
 
 	for _, p := range s.providers {
@@ -87,6 +99,7 @@ func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) Se
 			providerCtx, cancel := context.WithTimeout(ctx, s.timeout)
 			defer cancel()
 
+			// Each provider call gets its own span (handled by provider client)
 			resp, err := provider.Search(providerCtx, req)
 			resultsCh <- providerResult{
 				provider: provider.Name(),
@@ -140,6 +153,15 @@ func (s *SearchService) Search(ctx context.Context, req domain.SearchRequest) Se
 	response.Results = mergeSortResults(response.Results)
 	response.Meta.ProvidersSucceeded = response.Meta.ProvidersCalled - len(response.Meta.ProvidersFailed)
 	response.Meta.DurationMs = time.Since(started).Milliseconds()
+
+	// Add result attributes to span
+	telemetry.AddSpanAttributes(ctx,
+		telemetry.AttributeInt("results.count", len(response.Results)),
+		telemetry.AttributeInt("providers.succeeded", response.Meta.ProvidersSucceeded),
+		telemetry.AttributeInt("providers.failed", len(response.Meta.ProvidersFailed)),
+		telemetry.AttributeBool("cache.hit", false),
+		telemetry.AttributeInt64("duration_ms", response.Meta.DurationMs),
+	)
 	if s.cache != nil && s.cacheTTL > 0 {
 		_ = s.cache.Set(ctx, cacheKey, response, s.cacheTTL)
 	}

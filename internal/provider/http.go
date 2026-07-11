@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yourusername/goaggregator/internal/domain"
+	"github.com/yourusername/goaggregator/internal/telemetry"
 )
 
 type HTTPProvider struct {
@@ -67,30 +68,35 @@ func (p *HTTPProvider) Search(ctx context.Context, req domain.SearchRequest) (*d
 		return nil, fmt.Errorf("create provider request %q: %w", p.name, err)
 	}
 
+	// Start client span for tracing
+	ctx, span := telemetry.StartClientSpan(ctx, http.MethodGet, endpoint.String())
+	defer span.End()
+	telemetry.InjectHeaders(ctx, httpReq.Header)
+
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		telemetry.RecordError(ctx, err, telemetry.AttributeString("provider", p.name))
 		return nil, fmt.Errorf("call provider %q: %w", p.name, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		telemetry.AddSpanAttributes(ctx, telemetry.AttributeInt("http.status_code", resp.StatusCode))
 		return nil, fmt.Errorf("provider %q returned status %d", p.name, resp.StatusCode)
 	}
 
 	var searchResp domain.ProviderSearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+		telemetry.RecordError(ctx, err, telemetry.AttributeString("provider", p.name))
 		return nil, fmt.Errorf("decode provider %q response: %w", p.name, err)
 	}
 	if searchResp.Provider == "" {
 		searchResp.Provider = p.name
 	}
-	return &searchResp, nil
-}
 
-func providerName(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil || parsed.Hostname() == "" {
-		return strings.TrimRight(rawURL, "/")
-	}
-	return parsed.Hostname()
+	telemetry.AddSpanAttributes(ctx,
+		telemetry.AttributeString("provider.name", p.name),
+		telemetry.AttributeInt("results.count", len(searchResp.Results)),
+	)
+	return &searchResp, nil
 }
