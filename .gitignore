@@ -2,3 +2,8 @@
 
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+
+# Build artifacts
+*.exe
+api.exe
+mockprovider.exe
