@@ -29,6 +29,21 @@ type SearchResponse struct {
 	Results  []FlightResult `json:"results"`
 }
 
+type HotelResult struct {
+	ID            string `json:"id"`
+	City          string `json:"city"`
+	CheckIn       string `json:"checkin"`
+	CheckOut      string `json:"checkout"`
+	Name          string `json:"name"`
+	PricePerNight int    `json:"price_per_night"`
+	Currency      string `json:"currency"`
+}
+
+type HotelSearchResponse struct {
+	Provider string        `json:"provider"`
+	Results  []HotelResult `json:"results"`
+}
+
 type ControlResponse struct {
 	Status    string  `json:"status"`
 	LatencyMs int     `json:"latency_ms"`
@@ -141,6 +156,18 @@ var defaultDates = []string{
 	"2026-09-01",
 }
 
+var hotelCities = []string{"SGN", "HAN", "DAD", "BKK", "PQC"}
+
+var hotelNames = []string{
+	"Grand Plaza Hotel",
+	"Seaside Resort",
+	"City Center Inn",
+	"Boutique Garden Hotel",
+	"Business Tower Suites",
+	"Riverside Lodge",
+	"Heritage Boutique",
+}
+
 func generateResults(basePrice int) []FlightResult {
 	count := rand.Intn(6) + 3 // 3-8 results
 	results := make([]FlightResult, 0, count)
@@ -155,6 +182,28 @@ func generateResults(basePrice int) []FlightResult {
 			Price:    priceVariation,
 			Currency: "VND",
 			Airline:  airlines[rand.Intn(len(airlines))],
+		})
+	}
+	return results
+}
+
+func generateHotelResults(basePrice int, city, checkIn, checkOut string) []HotelResult {
+	count := rand.Intn(5) + 3 // 3-7 hotels
+	results := make([]HotelResult, 0, count)
+	requestedCity := city
+	if requestedCity == "" {
+		requestedCity = hotelCities[rand.Intn(len(hotelCities))]
+	}
+	for i := 0; i < count; i++ {
+		priceVariation := int(float64(basePrice) * (0.8 + rand.Float64()*0.4)) // ±20%
+		results = append(results, HotelResult{
+			ID:            fmt.Sprintf("HT-%03d", rand.Intn(999)+1),
+			City:          requestedCity,
+			CheckIn:       checkIn,
+			CheckOut:      checkOut,
+			Name:          hotelNames[rand.Intn(len(hotelNames))],
+			PricePerNight: priceVariation,
+			Currency:      "VND",
 		})
 	}
 	return results
@@ -200,28 +249,46 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "provider": providerName})
 	})
 
-	r.GET("/search", func(c *gin.Context) {
+	respondWithChaos := func(c *gin.Context, endpoint string, build func() any) {
 		if state.ShouldFail() {
-			slog.Warn("simulated failure", "provider", providerName)
+			slog.Warn("simulated failure", "provider", providerName, "endpoint", endpoint)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "simulated failure"})
 			return
 		}
 
 		latency := state.LatencyMs()
 		if latency > 0 {
-			slog.Info("applying latency", "provider", providerName, "latency_ms", latency)
+			slog.Info("applying latency", "provider", providerName, "latency_ms", latency, "endpoint", endpoint)
 			if ok := sleepWithContext(c.Request.Context(), latency); !ok {
 				slog.Warn("request cancelled during latency", "provider", providerName)
 				return
 			}
 		}
 
-		results := generateResults(basePrice)
-		resp := SearchResponse{
-			Provider: providerName,
-			Results:  results,
-		}
-		c.JSON(http.StatusOK, resp)
+		c.JSON(http.StatusOK, build())
+	}
+
+	r.GET("/search", func(c *gin.Context) {
+		respondWithChaos(c, "flights", func() any {
+			return SearchResponse{
+				Provider: providerName,
+				Results:  generateResults(basePrice),
+			}
+		})
+	})
+
+	r.GET("/search/hotels", func(c *gin.Context) {
+		respondWithChaos(c, "hotels", func() any {
+			return HotelSearchResponse{
+				Provider: providerName,
+				Results: generateHotelResults(
+					basePrice,
+					c.Query("city"),
+					c.Query("checkin"),
+					c.Query("checkout"),
+				),
+			}
+		})
 	})
 
 	r.POST("/control", func(c *gin.Context) {
